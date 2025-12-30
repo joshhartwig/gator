@@ -103,6 +103,10 @@ func main() {
 	cmds.register("agg", handleAgg)
 	cmds.register("addfeed", handlerAddFeed)
 	cmds.register("feeds", handlerGetFeeds)
+	cmds.register("follow", handlerFollow)
+	cmds.register("listfollows", handlerListFollows)
+	cmds.register("following", handlerGetFollows)
+	cmds.register("help", cmds.handlerHelp)
 
 	// get os orgs
 	args := os.Args
@@ -128,6 +132,30 @@ func main() {
 
 }
 
+// handlerGetFollows retrieves the list of feed follows for the current user from the database
+// and prints each followed feed's username and feed name to the standard output.
+// It returns an error if the user or their feed follows cannot be retrieved.
+func handlerGetFollows(s *state, cmd command) error {
+	userInDb, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
+	if err != nil {
+		return err
+	}
+
+	follows, err := s.db.GetFeedFollowsForUser(context.Background(), userInDb.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range follows {
+		fmt.Printf("%s - %s]n", f.UserName, f.FeedName)
+	}
+	return nil
+}
+
+// fetchFeed retrieves and parses an RSS feed from the specified URL.
+// It sends an HTTP GET request with a custom User-Agent header, reads the response body,
+// and unmarshals the XML data into an RSSFeed struct.
+// Returns a pointer to the RSSFeed and any error encountered during the process.
 func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 	feed := RSSFeed{}
 	req, err := http.NewRequestWithContext(ctx, "GET", feedUrl, nil)
@@ -155,8 +183,33 @@ func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 	return &feed, nil
 }
 
-// handlerAddFeed will regsiter 'addfeed' and get a url from the command
-// it will then add that feed to the database and associate it to the current user
+// handlerHelp prints a list of all available command names to the standard output.
+// It iterates over the command names stored in the commands struct and outputs each one.
+// Returns an error if any occurs during execution, otherwise returns nil.
+func (c *commands) handlerHelp(s *state, cmd command) error {
+	for n := range c.names {
+		fmt.Printf("- %s\n", n)
+	}
+	return nil
+}
+
+// handlerListFollows retrieves the list of feed follows from the database and outputs them using spew.Dump.
+// It returns an error if the database operation fails.
+func handlerListFollows(s *state, cmd command) error {
+	follows, err := s.db.GetFeedFollows(context.Background())
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(follows)
+	return nil
+}
+
+// handlerAddFeed handles the addition of a new feed to the user's account.
+// It expects the command arguments to contain at least a feed name and URL.
+// The function fetches the feed to validate the URL, retrieves the current user from the database,
+// and creates a new feed entry associated with the user. If successful, it prints the feed details.
+// Returns an error if argument validation fails, feed fetching fails, user retrieval fails, or feed creation fails.
 func handlerAddFeed(s *state, cmd command) error {
 
 	if len(cmd.args) < 2 || len(cmd.args) > 3 {
@@ -193,6 +246,8 @@ func handlerAddFeed(s *state, cmd command) error {
 
 }
 
+// handlerGetFeeds retrieves all feeds from the database and prints their details (Name, Url, UserName) to the standard output.
+// It returns an error if fetching feeds from the database fails.
 func handlerGetFeeds(s *state, cmd command) error {
 	feeds, err := s.db.GetFeeds(context.Background())
 	if err != nil {
@@ -205,6 +260,10 @@ func handlerGetFeeds(s *state, cmd command) error {
 	return nil
 }
 
+// register attempts to create a new user with the provided username from the command arguments.
+// If no username is provided, it returns an error. If the user already exists, it returns a specific error message.
+// On successful creation, it sets the user in the configuration and prints the user details.
+// Returns an error if any step fails.
 func register(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
 		return errors.New("gator: a username is required\n")
@@ -271,6 +330,46 @@ func handlerReset(s *state, cmd command) error {
 	return nil
 }
 
+// handlerFollow takes a single url record and creates a new
+// follow record for the current user
+func handlerFollow(s *state, cmd command) error {
+	if len(cmd.args) < 1 || len(cmd.args) > 1 {
+		return fmt.Errorf("should only have one argument in follow command but got %d\n", len(cmd.args))
+	}
+
+	url := cmd.args[0]
+	if url == "" {
+		return fmt.Errorf("The url is blank, pass in a properly formatted url")
+	}
+
+	if !isValidURL(url) {
+		return fmt.Errorf("The url is not a valid format, pass in a properly formatted url")
+	}
+
+	currentUser, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
+	if err != nil {
+		return err
+	}
+
+	feed, err := s.db.GetFeedByUrl(context.Background(), url)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("found current user:%s and feed by url:%s", currentUser.Name, feed.Name)
+
+	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    currentUser.ID,
+		FeedID:    feed.ID,
+	})
+
+	fmt.Printf("New Following Created:\nid:%s\nname:%s\nusername:%s\n", follow.ID, follow.FeedName, follow.UserName)
+	return nil
+}
+
 // handleListUsers will list all users in db and the one currently logged in
 func handleListUsers(s *state, cmd command) error {
 	users, err := s.db.GetUsers(context.Background())
@@ -304,4 +403,10 @@ func printArgs(args []string) {
 	for _, i := range args {
 		fmt.Printf("%s\n", i)
 	}
+	fmt.Printf("args length: %d\n", len(args))
+}
+
+// isValidURL checks to see if we have http or https
+func isValidURL(url string) bool {
+	return len(url) > 0 && (len(url) > 7 && (url[:7] == "http://" || (len(url) > 8 && url[:8] == "https://")))
 }
