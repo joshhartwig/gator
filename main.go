@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/joshhartwig/gator/internal/config"
 	"github.com/joshhartwig/gator/internal/database"
@@ -199,7 +200,7 @@ func handlerGetFeeds(s *state, cmd command) error {
 	}
 
 	for _, f := range feeds {
-		fmt.Printf("%s - %s - %s\n", f.Name, f.Url, f.ID)
+		fmt.Printf("%s - %s - %s\n", f.Name, f.Url, f.UserName)
 	}
 	return nil
 }
@@ -266,7 +267,7 @@ func handlerReset(s *state, cmd command) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("gator: reset ran, delete users complete")
+	fmt.Printf("reset complete\n")
 	return nil
 }
 
