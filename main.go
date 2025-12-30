@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -16,6 +19,22 @@ import (
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
 
 type state struct {
 	db     *database.Queries
@@ -52,7 +71,6 @@ func (c *commands) register(name string, f func(*state, command) error) {
 	_, ok := c.names[name]
 	if !ok {
 		c.names[name] = f
-		fmt.Printf("gator: succesfully registered the %s command\n", name)
 	}
 }
 
@@ -79,12 +97,17 @@ func main() {
 	cmds := commands{names: make(map[string]func(*state, command) error)}
 	cmds.register("login", handlerLogin)
 	cmds.register("register", register)
-	cmds.register("admin", handlerAdmin)
+	cmds.register("reset", handlerReset)
+	cmds.register("users", handleListUsers)
+	cmds.register("agg", handleAgg)
+	cmds.register("addfeed", handlerAddFeed)
+	cmds.register("feeds", handlerGetFeeds)
 
 	// get os orgs
 	args := os.Args
 	if len(args) < 2 {
 		fmt.Printf("gator: error not enough arguments passed in, need at least two, got %d\n", len(args))
+		printArgs(args)
 		os.Exit(1)
 	}
 
@@ -102,6 +125,83 @@ func main() {
 		os.Exit(1)
 	}
 
+}
+
+func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
+	feed := RSSFeed{}
+	req, err := http.NewRequestWithContext(ctx, "GET", feedUrl, nil)
+	if err != nil {
+		return &feed, err
+	}
+
+	req.Header.Set("User-Agent", "gator")
+	client := &http.Client{}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return &feed, err
+	}
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return &feed, err
+	}
+
+	err = xml.Unmarshal(data, &feed)
+	if err != nil {
+		return &feed, err
+	}
+	return &feed, nil
+}
+
+// handlerAddFeed will regsiter 'addfeed' and get a url from the command
+// it will then add that feed to the database and associate it to the current user
+func handlerAddFeed(s *state, cmd command) error {
+
+	if len(cmd.args) < 2 || len(cmd.args) > 3 {
+		return fmt.Errorf("addfeed should have two or more commands")
+	}
+
+	name := cmd.args[0]
+	url := cmd.args[1]
+
+	// fetch feed
+	_, err := fetchFeed(context.Background(), url)
+	if err != nil {
+		return err
+	}
+
+	// fetch user
+	user, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
+	if err != nil {
+		return err
+	}
+
+	retFeed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      name,
+		Url:       url,
+		UserID:    user.ID,
+	})
+
+	fmt.Printf("Feed Name: %s Feed Url: %s\n", retFeed.Name, retFeed.Url)
+
+	return nil
+
+}
+
+func handlerGetFeeds(s *state, cmd command) error {
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, f := range feeds {
+		fmt.Printf("%s - %s - %s\n", f.Name, f.Url, f.ID)
+	}
+	return nil
 }
 
 func register(s *state, cmd command) error {
@@ -138,6 +238,7 @@ func register(s *state, cmd command) error {
 
 }
 
+// will login the passed in user
 func handlerLogin(s *state, cmd command) error {
 	// check to see if we have any args
 	if len(cmd.args) == 0 {
@@ -159,26 +260,47 @@ func handlerLogin(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAdmin(s *state, cmd command) error {
-	if len(cmd.args) == 0 {
-		return errors.New("gator: a username is required\n")
-	}
-	adminCommand := cmd.args[0]
-
-	if adminCommand == "delete" {
-		err := deleteUsers(s)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("gator: admin delete users complete")
-	}
-	return nil
-}
-
-func deleteUsers(s *state) error {
+// handleReset will delete everything in the users table
+func handlerReset(s *state, cmd command) error {
 	err := s.db.DeleteAllUsers(context.Background())
 	if err != nil {
 		return err
 	}
+	fmt.Printf("gator: reset ran, delete users complete")
 	return nil
+}
+
+// handleListUsers will list all users in db and the one currently logged in
+func handleListUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for _, u := range users {
+		if u.Name == s.config.Current_User_Name {
+			fmt.Printf("%s (current)\n", u.Name)
+		} else {
+			fmt.Printf("%s\n", u.Name)
+		}
+	}
+
+	return nil
+}
+
+func handleAgg(s *state, cmd command) error {
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%v", feed)
+	return nil
+}
+
+// prints each arg with a newline for debugging purposes
+func printArgs(args []string) {
+	for _, i := range args {
+		fmt.Printf("%s\n", i)
+	}
 }
