@@ -147,7 +147,7 @@ func handlerGetFollows(s *state, cmd command) error {
 	}
 
 	for _, f := range follows {
-		fmt.Printf("%s - %s]n", f.UserName, f.FeedName)
+		fmt.Printf("%s - %s\n", f.UserName, f.FeedName)
 	}
 	return nil
 }
@@ -240,7 +240,19 @@ func handlerAddFeed(s *state, cmd command) error {
 		UserID:    user.ID,
 	})
 
-	fmt.Printf("Feed Name: %s Feed Url: %s\n", retFeed.Name, retFeed.Url)
+	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    retFeed.UserID,
+		FeedID:    retFeed.ID,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Feed Name: %s Feed Url: %s Feed Follow:%s created\n", retFeed.Name, retFeed.Url, follow.FeedID)
 
 	return nil
 
