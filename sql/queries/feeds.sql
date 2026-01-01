@@ -32,3 +32,11 @@ SELECT
   feeds.user_id
 FROM feeds
 WHERE feeds.url = $1;
+
+-- name: MarkFeedFetched :one
+UPDATE feeds
+SET 
+  last_fetched_at = NOW(), 
+  updated_at = NOW()
+WHERE id = $1
+RETURNING *;
