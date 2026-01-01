@@ -42,7 +42,7 @@ func handlerListFollows(s *state, cmd command) error {
 func handlerAddFeed(s *state, cmd command, user database.User) error {
 
 	if len(cmd.args) < 2 || len(cmd.args) > 3 {
-		return fmt.Errorf("addfeed should have two or more commands")
+		return fmt.Errorf(`addfeed should have two or more commands (ex addfeed "hackernews" "http://url")`)
 	}
 
 	name := cmd.args[0]
@@ -221,13 +221,25 @@ func handleListUsers(s *state, cmd command) error {
 }
 
 func handleAgg(s *state, cmd command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if len(cmd.args) < 1 || len(cmd.args) > 1 {
+		return fmt.Errorf("agg should have only one duration argument. Recieved %d", len(cmd.args))
+	}
+	timeArg := cmd.args[0]
+	duration, err := time.ParseDuration(timeArg)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%v", feed)
+	fmt.Printf("Collecting feeds every %v\n", duration)
+
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		scrapeFeeds(s)
+	}
 	return nil
+
 }
 
 // register attempts to create a new user with the provided username from the command arguments.

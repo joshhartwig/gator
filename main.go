@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -126,6 +127,31 @@ func main() {
 		os.Exit(1)
 	}
 
+}
+
+func scrapeFeeds(s *state) error {
+	// fetch the latest feed
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return errors.ErrUnsupported
+	}
+
+	// mark the feed as fetched
+	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return err
+	}
+
+	rss, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s\n", rss.Channel.Title)
+	for _, r := range rss.Channel.Item {
+		fmt.Printf("\t%s\t%s\n", r.Title, r.Link)
+	}
+	return nil
 }
 
 // fetchFeed retrieves and parses an RSS feed from the specified URL.
