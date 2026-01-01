@@ -101,6 +101,42 @@ func handlerGetFeeds(s *state, cmd command) error {
 	return nil
 }
 
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 || len(cmd.args) > 2 {
+		return fmt.Errorf("unsupported arg count: %d", len(cmd.args))
+	}
+
+	url := cmd.args[0]
+	if !isValidURL(url) {
+		return fmt.Errorf("invalid url: %s", cmd.args[0])
+	}
+
+	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
+	if err != nil {
+		return err
+	}
+
+	// loop through the feeds and find the feed id that matches the url
+	// when we find it assign to feedIdToDelete
+	feedIdToDelete := uuid.UUID{}
+	for _, f := range follows {
+		if f.FeedUrl == url {
+			feedIdToDelete = f.FeedID
+		}
+	}
+
+	// delete the feed now that we have the feedid & user
+	err = s.db.DeleteFeedFollowForUser(context.Background(), database.DeleteFeedFollowForUserParams{
+		UserID: user.ID,
+		FeedID: feedIdToDelete,
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // handlerGetFollows retrieves the list of feed follows for the current user from the database
 // and prints each followed feed's username and feed name to the standard output.
 // It returns an error if the user or their feed follows cannot be retrieved.

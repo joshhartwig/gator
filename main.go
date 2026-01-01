@@ -101,6 +101,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("listfollows", handlerListFollows)
 	cmds.register("following", middlewareLoggedIn(handlerGetFollows))
+	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	cmds.register("help", cmds.handlerHelp)
 
 	// get os orgs
