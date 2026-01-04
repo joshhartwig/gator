@@ -10,7 +10,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/joshhartwig/gator/internal/config"
 	"github.com/joshhartwig/gator/internal/database"
 
@@ -104,6 +106,7 @@ func main() {
 	cmds.register("following", middlewareLoggedIn(handlerGetFollows))
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	cmds.register("help", cmds.handlerHelp)
+	cmds.register("browse", middlewareLoggedIn(handlerBrowsePosts))
 
 	// get os orgs
 	args := os.Args
@@ -149,7 +152,28 @@ func scrapeFeeds(s *state) error {
 
 	fmt.Printf("%s\n", rss.Channel.Title)
 	for _, r := range rss.Channel.Item {
-		fmt.Printf("\t%s\t%s\n", r.Title, r.Link)
+
+		// attempt to parse the time, if not set it to now
+		pubDate, err := time.Parse("time.RFC3339", r.PubDate)
+		if err != nil {
+			pubDate = time.Now()
+		}
+
+		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       r.Title,
+			Url:         r.Link,
+			Description: sql.NullString{String: r.Description},
+			PublishedAt: pubDate,
+			FeedID:      feed.ID,
+		})
+
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Printf("added entry to db: %s @ %v\n", r.Title, r.PubDate)
 	}
 	return nil
 }

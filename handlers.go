@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/joshhartwig/gator/internal/database"
 	"github.com/lib/pq"
@@ -29,8 +29,11 @@ func handlerListFollows(s *state, cmd command) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("Listing your follows")
+	for _, f := range follows {
+		fmt.Printf("- %s\n", f.FeedID)
+	}
 
-	spew.Dump(follows)
 	return nil
 }
 
@@ -220,6 +223,31 @@ func handleListUsers(s *state, cmd command) error {
 	return nil
 }
 
+// handlerBrowsePosts shows all RSS Items that have been gathered in the database
+func handlerBrowsePosts(s *state, cmd command, user database.User) error {
+	limit := 3
+	if len(cmd.args) > 0 {
+		if l, err := strconv.Atoi(cmd.args[0]); err == nil {
+			limit = l
+		}
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Browsing the %d most recent posts\n", limit)
+	for _, p := range posts {
+		fmt.Printf("- %s %s %s\n", p.Title, p.Description.String, p.PublishedAt)
+	}
+	return nil
+}
+
+// handleAgg will aggregate all posts from the feeds and write them to the database
+// expects duration argument in time ex 1m
 func handleAgg(s *state, cmd command) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
 		return fmt.Errorf("agg should have only one duration argument. Recieved %d", len(cmd.args))
@@ -254,7 +282,6 @@ func register(s *state, cmd command) error {
 	username := cmd.args[0]
 
 	// search for user first prior to creating new user
-
 	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
