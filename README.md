@@ -17,12 +17,6 @@ I have been learning Go for over a year and I thought this was a great course an
   - uuid for uuids
   - libpq for Postgres
 
-## Getting Started
-
-### Prerequisites
-
--
-
 ### Development
 
 ```bash
@@ -64,5 +58,3 @@ Contributions are welcome! Please open issues or submit pull requests.
 ## License
 
 MIT
-
-## Contact

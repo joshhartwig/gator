@@ -1,18 +1,11 @@
 package main
 
 import (
-	"context"
 	"database/sql"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/joshhartwig/gator/internal/config"
 	"github.com/joshhartwig/gator/internal/database"
 
@@ -94,25 +87,26 @@ func main() {
 
 	// create a new commands struct and register login with handler
 	cmds := commands{names: make(map[string]func(*state, command) error)}
-	cmds.register("login", handlerLogin)
-	cmds.register("register", register)
-	cmds.register("reset", handlerReset)
-	cmds.register("users", handleListUsers)
-	cmds.register("agg", handleAgg)
-	cmds.register("addfeed", middlewareLoggedIn(handlerAddFeed))
-	cmds.register("feeds", handlerGetFeeds)
-	cmds.register("follow", middlewareLoggedIn(handlerFollow))
+
+	cmds.register("help", cmds.handlerHelp)
 	cmds.register("listfollows", handlerListFollows)
+	cmds.register("feeds", handlerGetFeeds)
+	cmds.register("users", handlerListUsers)
+	cmds.register("reset", handlerReset)
+
+	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
+	cmds.register("agg", handlerAgg)
+	cmds.register("addfeed", middlewareLoggedIn(handlerAddFeed))
+	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerGetFollows))
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
-	cmds.register("help", cmds.handlerHelp)
 	cmds.register("browse", middlewareLoggedIn(handlerBrowsePosts))
 
 	// get os orgs
 	args := os.Args
 	if len(args) < 2 {
-		fmt.Printf("gator: error not enough arguments passed in, need at least two, got %d\n", len(args))
-		printArgs(args)
+		fmt.Print("gator: error - not enough arguments passed in")
 		os.Exit(1)
 	}
 
@@ -129,95 +123,4 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
-}
-
-func scrapeFeeds(s *state) error {
-	// fetch the latest feed
-	feed, err := s.db.GetNextFeedToFetch(context.Background())
-	if err != nil {
-		return errors.ErrUnsupported
-	}
-
-	// mark the feed as fetched
-	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
-	if err != nil {
-		return err
-	}
-
-	rss, err := fetchFeed(context.Background(), feed.Url)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("%s\n", rss.Channel.Title)
-	for _, r := range rss.Channel.Item {
-
-		// attempt to parse the time, if not set it to now
-		pubDate, err := time.Parse("time.RFC3339", r.PubDate)
-		if err != nil {
-			pubDate = time.Now()
-		}
-
-		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
-			ID:          uuid.New(),
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-			Title:       r.Title,
-			Url:         r.Link,
-			Description: sql.NullString{String: r.Description},
-			PublishedAt: pubDate,
-			FeedID:      feed.ID,
-		})
-
-		if err != nil {
-			fmt.Println(err)
-		}
-		fmt.Printf("added entry to db: %s @ %v\n", r.Title, r.PubDate)
-	}
-	return nil
-}
-
-// fetchFeed retrieves and parses an RSS feed from the specified URL.
-// It sends an HTTP GET request with a custom User-Agent header, reads the response body,
-// and unmarshals the XML data into an RSSFeed struct.
-// Returns a pointer to the RSSFeed and any error encountered during the process.
-func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
-	feed := RSSFeed{}
-	req, err := http.NewRequestWithContext(ctx, "GET", feedUrl, nil)
-	if err != nil {
-		return &feed, err
-	}
-
-	req.Header.Set("User-Agent", "gator")
-	client := &http.Client{}
-
-	res, err := client.Do(req)
-	if err != nil {
-		return &feed, err
-	}
-
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return &feed, err
-	}
-
-	err = xml.Unmarshal(data, &feed)
-	if err != nil {
-		return &feed, err
-	}
-	return &feed, nil
-}
-
-// prints each arg with a newline for debugging purposes
-func printArgs(args []string) {
-	for _, i := range args {
-		fmt.Printf("%s\n", i)
-	}
-	fmt.Printf("args length: %d\n", len(args))
-}
-
-// isValidURL checks to see if we have http or https
-func isValidURL(url string) bool {
-	return len(url) > 0 && (len(url) > 7 && (url[:7] == "http://" || (len(url) > 8 && url[:8] == "https://")))
 }

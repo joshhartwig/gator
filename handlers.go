@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -16,9 +15,15 @@ import (
 // It iterates over the command names stored in the commands struct and outputs each one.
 // Returns an error if any occurs during execution, otherwise returns nil.
 func (c *commands) handlerHelp(s *state, cmd command) error {
+	fmt.Println(prefix)
+	fmt.Printf("\033[31mUsage:\033[0m\n\tgator <command> [args]\n\n")
+	Infof("\033[31mCommands:\033[0m\n")
 	for n := range c.names {
-		fmt.Printf("- %s\n", n)
+		Infof(" %s", n)
 	}
+
+	fmt.Printf("\033[31mExamples:\033[0m\n")
+	fmt.Printf("gator register ted\ngator addfeed \"hn\" \"https://hackernews.com/rss\"\ngator agg 1m")
 	return nil
 }
 
@@ -27,11 +32,11 @@ func (c *commands) handlerHelp(s *state, cmd command) error {
 func handlerListFollows(s *state, cmd command) error {
 	follows, err := s.db.GetFeedFollows(context.Background())
 	if err != nil {
-		return err
+		return Errorf("unable to get feed follows %v", err)
 	}
 	fmt.Println("Listing your follows")
 	for _, f := range follows {
-		fmt.Printf("- %s\n", f.FeedID)
+		Infof("- %s", f.FeedID)
 	}
 
 	return nil
@@ -54,15 +59,10 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 	// fetch feed
 	_, err := fetchFeed(context.Background(), url)
 	if err != nil {
-		return err
+		return Errorf("error fetching feed %v", err)
 	}
 
-	// // fetch user
-	// user, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
-	// if err != nil {
-	// 	return err
-	// }
-
+	// create a new feed in the db and return it
 	retFeed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
@@ -72,6 +72,11 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 		UserID:    user.ID,
 	})
 
+	if err != nil {
+		return Errorf("error creating a new feed %v", err)
+	}
+
+	// create a new follow
 	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
@@ -81,13 +86,11 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 	})
 
 	if err != nil {
-		return err
+		return Errorf("error creating a new feed following: %v", err)
 	}
 
-	fmt.Printf("Feed Name: %s Feed Url: %s Feed Follow:%s created\n", retFeed.Name, retFeed.Url, follow.FeedID)
-
+	Infof("Feed Name: %s feed url: %s feed following:%s created", retFeed.Name, retFeed.Url, follow.FeedID)
 	return nil
-
 }
 
 // handlerGetFeeds retrieves all feeds from the database and prints their details (Name, Url, UserName) to the standard output.
@@ -95,28 +98,28 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 func handlerGetFeeds(s *state, cmd command) error {
 	feeds, err := s.db.GetFeeds(context.Background())
 	if err != nil {
-		return err
+		return Errorf("error running getting feeds %v", err)
 	}
 
 	for _, f := range feeds {
-		fmt.Printf("%s - %s - %s\n", f.Name, f.Url, f.UserName)
+		Infof("%s - %s - %s", f.Name, f.Url, f.UserName)
 	}
 	return nil
 }
 
 func handlerUnfollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 2 {
-		return fmt.Errorf("unsupported arg count: %d", len(cmd.args))
+		Errorf("unsupported arg count: %d", len(cmd.args))
 	}
 
 	url := cmd.args[0]
 	if !isValidURL(url) {
-		return fmt.Errorf("invalid url: %s", cmd.args[0])
+		return Errorf("invalid url: %s", cmd.args[0])
 	}
 
 	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
-		return err
+		return Errorf("unable to get feed follows %v", err)
 	}
 
 	// loop through the feeds and find the feed id that matches the url
@@ -129,14 +132,14 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	}
 
 	// delete the feed now that we have the feedid & user
-	err = s.db.DeleteFeedFollowForUser(context.Background(), database.DeleteFeedFollowForUserParams{
+	if err = s.db.DeleteFeedFollowForUser(context.Background(), database.DeleteFeedFollowForUserParams{
 		UserID: user.ID,
 		FeedID: feedIdToDelete,
-	})
-
-	if err != nil {
-		return err
+	}); err != nil {
+		return Errorf("error deleting feed follow for user %v", err)
 	}
+
+	Infof("successfully unfollowed feed: %s", url)
 	return nil
 }
 
@@ -146,11 +149,11 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 func handlerGetFollows(s *state, cmd command, user database.User) error {
 	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
-		return err
+		return Errorf("unable to get feed follows for user %v", err)
 	}
 
 	for _, f := range follows {
-		fmt.Printf("%s - %s\n", f.UserName, f.FeedName)
+		Infof("%s - %s", f.UserName, f.FeedName)
 	}
 	return nil
 }
@@ -159,9 +162,9 @@ func handlerGetFollows(s *state, cmd command, user database.User) error {
 func handlerReset(s *state, cmd command) error {
 	err := s.db.DeleteAllUsers(context.Background())
 	if err != nil {
-		return err
+		return Errorf("error reseting database %v", err)
 	}
-	fmt.Printf("reset complete\n")
+	Successf("success reset database")
 	return nil
 }
 
@@ -169,29 +172,29 @@ func handlerReset(s *state, cmd command) error {
 // follow record for the current user
 func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
-		return fmt.Errorf("should only have one argument in follow command but got %d\n", len(cmd.args))
+		return Errorf("should only have one argument in follow command but got %d", len(cmd.args))
 	}
 
 	url := cmd.args[0]
 	if url == "" {
-		return fmt.Errorf("The url is blank, pass in a properly formatted url")
+		return Errorf("The url is blank, pass in a properly formatted url")
 	}
 
 	if !isValidURL(url) {
-		return fmt.Errorf("The url is not a valid format, pass in a properly formatted url")
+		return Errorf("The url is not a valid format, pass in a properly formatted url")
 	}
 
 	user, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
 	if err != nil {
-		return err
+		return Errorf("unable to get user from db %v", err)
 	}
 
 	feed, err := s.db.GetFeedByUrl(context.Background(), url)
 	if err != nil {
-		return err
+		return Errorf("unable to get feed by url %v", err)
 	}
 
-	fmt.Printf("found current user:%s and feed by url:%s", user.Name, feed.Name)
+	Infof("found current user:%s and feed by url:%s", user.Name, feed.Name)
 
 	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
 		ID:        uuid.New(),
@@ -201,22 +204,23 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 		FeedID:    feed.ID,
 	})
 
-	fmt.Printf("New Following Created:\nid:%s\nname:%s\nusername:%s\n", follow.ID, follow.FeedName, follow.UserName)
+	Successf("new feed following created: id:%s name:%s username:%s", follow.ID, follow.FeedName, follow.UserName)
 	return nil
 }
 
 // handleListUsers will list all users in db and the one currently logged in
-func handleListUsers(s *state, cmd command) error {
+func handlerListUsers(s *state, cmd command) error {
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
-		return err
+		return Errorf("error listing users %s", err.Error())
 	}
 
+	Infof("users:")
 	for _, u := range users {
 		if u.Name == s.config.Current_User_Name {
-			fmt.Printf("%s (current)\n", u.Name)
+			Infof("%s (current logged in user)", u.Name)
 		} else {
-			fmt.Printf("%s\n", u.Name)
+			Infof("%s", u.Name)
 		}
 	}
 
@@ -237,20 +241,22 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 		Limit:  int32(limit),
 	})
 	if err != nil {
-		return err
+		return Errorf("unable to get posts for user %s", user.Name)
 	}
-	fmt.Printf("Browsing the %d most recent posts\n", limit)
+
+	Infof("browsing the %d most recent posts", limit)
+
 	for _, p := range posts {
-		fmt.Printf("- %s %s %s\n", p.Title, p.Description.String, p.PublishedAt)
+		Infof("- %s %s %s", p.Title, p.Description.String, p.PublishedAt)
 	}
 	return nil
 }
 
 // handleAgg will aggregate all posts from the feeds and write them to the database
 // expects duration argument in time ex 1m
-func handleAgg(s *state, cmd command) error {
+func handlerAgg(s *state, cmd command) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
-		return fmt.Errorf("agg should have only one duration argument. Recieved %d", len(cmd.args))
+		return Errorf("the agg command should only have one duration arg, got %d", len(cmd.args))
 	}
 	timeArg := cmd.args[0]
 	duration, err := time.ParseDuration(timeArg)
@@ -258,7 +264,7 @@ func handleAgg(s *state, cmd command) error {
 		return err
 	}
 
-	fmt.Printf("Collecting feeds every %v\n", duration)
+	Infof("collecting feeds every %v", duration)
 
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
@@ -274,9 +280,9 @@ func handleAgg(s *state, cmd command) error {
 // If no username is provided, it returns an error. If the user already exists, it returns a specific error message.
 // On successful creation, it sets the user in the configuration and prints the user details.
 // Returns an error if any step fails.
-func register(s *state, cmd command) error {
+func handlerRegister(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
-		return errors.New("gator: a username is required\n")
+		return Errorf("a username is required")
 	}
 
 	username := cmd.args[0]
@@ -290,41 +296,39 @@ func register(s *state, cmd command) error {
 	})
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok && string(pgErr.Code) == "23505" {
-			return fmt.Errorf("gator: user %q already exists", username)
+			return Errorf("error user %q already exists", username)
 		}
 		return err
 	}
 
 	err = s.config.SetUser(user.Name)
 	if err != nil {
-		return err
+		return Errorf("error setting username %s", err.Error())
 	}
 
-	fmt.Printf("gator: the following user was created:\nid: %s\n name: %s\n",
-		user.ID.String(), user.Name)
-
+	Infof("the following user was created successfully id:%s name:%s", user.ID.String(), user.Name)
 	return nil
 
 }
 
 // will login the passed in user
 func handlerLogin(s *state, cmd command) error {
-	// check to see if we have any args
 	if len(cmd.args) == 0 {
-		return errors.New("gator: a username is required\n")
+		return Errorf("a username is required")
 	}
 	username := cmd.args[0]
 
 	// find user in db
 	userInDb, err := s.db.GetUser(context.Background(), username)
 	if err != nil {
-		return fmt.Errorf("error! unable to find user:%s in database, please try again", username)
+		return Errorf("unable to find user in database %s", username)
 	}
 
 	err = s.config.SetUser(userInDb.Name)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("gator: the username:%s has been set \n", username)
+	print(message(1), fmt.Sprintf("successfully unfollowed feed: %s", username))
+	fmt.Printf("gator: the username:%s has been set", username)
 	return nil
 }
