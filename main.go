@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"text/tabwriter"
 
 	"github.com/joshhartwig/gator/internal/config"
 	"github.com/joshhartwig/gator/internal/database"
+	"github.com/joshhartwig/gator/internal/ui"
 
 	_ "github.com/lib/pq"
 )
@@ -29,8 +31,10 @@ type RSSItem struct {
 }
 
 type state struct {
-	db     *database.Queries
-	config *config.Config
+	db       *database.Queries
+	config   *config.Config
+	tw       *tabwriter.Writer
+	renderer *ui.Renderer
 }
 
 // command struct contains name and slice of string args
@@ -68,21 +72,23 @@ func (c *commands) register(name string, f func(*state, command) error) {
 
 func main() {
 
+	Infof(prefix) // print out gator start message
 	cfg, err := config.Read()
 	if err != nil {
-		log.Panic("gator: error reading config file")
+		log.Panic("error reading config file")
 	}
 
 	db, err := sql.Open("postgres", cfg.DB_URL)
 	if err != nil {
-		log.Panic("gator: error opening database")
+		log.Panic("error opening database")
 	}
 
 	queries := database.New(db)
 
 	st := state{
-		db:     queries,
-		config: &cfg,
+		db:       queries,
+		config:   &cfg,
+		renderer: ui.New(os.Stdout),
 	}
 
 	// create a new commands struct and register login with handler
@@ -106,7 +112,7 @@ func main() {
 	// get os orgs
 	args := os.Args
 	if len(args) < 2 {
-		fmt.Print("gator: error - not enough arguments passed in")
+		st.renderer.Error("Gator requires two or more arguments initially, see 'help' for more assistance")
 		os.Exit(1)
 	}
 
@@ -123,4 +129,5 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+
 }

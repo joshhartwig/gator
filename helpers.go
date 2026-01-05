@@ -17,23 +17,34 @@ import (
 
 type message int
 
-const prefix = "Gator - RSS Aggregator Command Line Interface"
+const (
+	prefix = "🐊 Gator - RSS Aggregator Command Line Interface"
+	Reset  = "\033[0m"
+	Red    = "\033[31m"
+	Green  = "\033[32m]"
+	Blue   = "\033[34m"
+)
 
 func Successf(format string, args ...any) {
-	fmt.Fprintf(os.Stdout, "%s info: %s\n", prefix, fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stdout, "Success %s\n", fmt.Sprintf(format, args...))
 }
 
 func Infof(format string, args ...any) {
-	fmt.Fprintf(os.Stdout, "%s\n", fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stdout, "%4s%s\n", "", fmt.Sprintf(format, args...))
 }
 
 func Warnf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s warn: %s\n", prefix, fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stderr, "Warn %s\n", fmt.Sprintf(format, args...))
 }
 
 func Errorf(format string, args ...any) error {
-	fmt.Fprintf(os.Stdout, "%s error: %s\n", prefix, fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stdout, "Error: %s\n", fmt.Sprintf(format, args...))
 	return fmt.Errorf(format, args...)
+}
+
+func (s *state) TableW(format string, args ...any) {
+	fmt.Fprintf(s.tw, format, args...)
+	s.tw.Flush()
 }
 
 func scrapeFeeds(s *state) error {

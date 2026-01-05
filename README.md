@@ -47,8 +47,6 @@ gator addfeed 'hackernews' 'https://hackernews.com/feed' # adds a new feed with 
 gator following # shows the feeds the current user is following
 gator unfollow # pass in a url and remove a feed if found
 gator browse # shows the most recent posts for the logged in user
-
-
 ```
 
 ## Contributing

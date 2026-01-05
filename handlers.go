@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -256,7 +257,7 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 // expects duration argument in time ex 1m
 func handlerAgg(s *state, cmd command) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
-		return Errorf("the agg command should only have one duration arg, got %d", len(cmd.args))
+		return Errorf("The agg command should only have one duration argument, recieved %d arguments.", len(cmd.args))
 	}
 	timeArg := cmd.args[0]
 	duration, err := time.ParseDuration(timeArg)
@@ -264,16 +265,21 @@ func handlerAgg(s *state, cmd command) error {
 		return err
 	}
 
-	Infof("collecting feeds every %v", duration)
+	Infof("We will begin downloading posts from your feeds starting in %v", duration)
+	var wg sync.WaitGroup
 
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		scrapeFeeds(s)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			scrapeFeeds(s)
+		}()
 	}
+	wg.Wait()
 	return nil
-
 }
 
 // register attempts to create a new user with the provided username from the command arguments.
@@ -296,6 +302,7 @@ func handlerRegister(s *state, cmd command) error {
 	})
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok && string(pgErr.Code) == "23505" {
+			s.renderer.Error(fmt.Sprintf("User %q already exists in database", username))
 			return Errorf("error user %q already exists", username)
 		}
 		return err
