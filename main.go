@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"text/tabwriter"
 
 	"github.com/joshhartwig/gator/internal/config"
 	"github.com/joshhartwig/gator/internal/database"
-	"github.com/joshhartwig/gator/internal/ui"
+	ui "github.com/joshhartwig/gator/internal/ui"
 
 	_ "github.com/lib/pq"
 )
@@ -31,10 +30,9 @@ type RSSItem struct {
 }
 
 type state struct {
-	db       *database.Queries
-	config   *config.Config
-	tw       *tabwriter.Writer
-	renderer *ui.Renderer
+	db     *database.Queries
+	config *config.Config
+	ui     *ui.Renderer
 }
 
 // command struct contains name and slice of string args
@@ -72,7 +70,7 @@ func (c *commands) register(name string, f func(*state, command) error) {
 
 func main() {
 
-	Infof(prefix) // print out gator start message
+	fmt.Println(prefix) // print out gator start message
 	cfg, err := config.Read()
 	if err != nil {
 		log.Panic("error reading config file")
@@ -86,9 +84,9 @@ func main() {
 	queries := database.New(db)
 
 	st := state{
-		db:       queries,
-		config:   &cfg,
-		renderer: ui.New(os.Stdout),
+		db:     queries,
+		config: &cfg,
+		ui:     ui.New(os.Stdout),
 	}
 
 	// create a new commands struct and register login with handler
@@ -100,19 +98,19 @@ func main() {
 	cmds.register("users", handlerListUsers)
 	cmds.register("reset", handlerReset)
 
-	cmds.register("login", handlerLogin)
-	cmds.register("register", handlerRegister)
-	cmds.register("agg", handlerAgg)
 	cmds.register("addfeed", middlewareLoggedIn(handlerAddFeed))
+	cmds.register("agg", handlerAgg)
+	cmds.register("browse", middlewareLoggedIn(handlerBrowsePosts))
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerGetFollows))
+	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
-	cmds.register("browse", middlewareLoggedIn(handlerBrowsePosts))
 
 	// get os orgs
 	args := os.Args
 	if len(args) < 2 {
-		st.renderer.Error("Gator requires two or more arguments initially, see 'help' for more assistance")
+		st.ui.Error("Gator requires two or more arguments initially, see 'help' for more assistance")
 		os.Exit(1)
 	}
 

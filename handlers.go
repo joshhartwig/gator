@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joshhartwig/gator/internal/database"
+	"github.com/joshhartwig/gator/internal/ui"
 	"github.com/lib/pq"
 )
 
@@ -16,15 +17,18 @@ import (
 // It iterates over the command names stored in the commands struct and outputs each one.
 // Returns an error if any occurs during execution, otherwise returns nil.
 func (c *commands) handlerHelp(s *state, cmd command) error {
-	fmt.Println(prefix)
-	fmt.Printf("\033[31mUsage:\033[0m\n\tgator <command> [args]\n\n")
-	Infof("\033[31mCommands:\033[0m\n")
+	s.ui.Header("Help")
+	s.ui.Item("%sUsage:%s", ui.Red, ui.Reset)
+	s.ui.Item("  gator <command> [args]\n")
+	s.ui.Item("%sCommands:%s", ui.Red, ui.Reset)
 	for n := range c.names {
-		Infof(" %s", n)
+		s.ui.Item("  %s", n)
 	}
 
-	fmt.Printf("\033[31mExamples:\033[0m\n")
-	fmt.Printf("gator register ted\ngator addfeed \"hn\" \"https://hackernews.com/rss\"\ngator agg 1m")
+	s.ui.Item("\n%sExamples:%s", ui.Red, ui.Reset)
+	s.ui.Item("  gator register ted")
+	s.ui.Item("  gator addfeed \"hn\" \"https://hackernews.com/rss")
+	s.ui.Item("  gator agg 1m")
 	return nil
 }
 
@@ -33,11 +37,13 @@ func (c *commands) handlerHelp(s *state, cmd command) error {
 func handlerListFollows(s *state, cmd command) error {
 	follows, err := s.db.GetFeedFollows(context.Background())
 	if err != nil {
-		return Errorf("unable to get feed follows %v", err)
+		s.ui.Error(err.Error())
+		return err
 	}
-	fmt.Println("Listing your follows")
+
+	s.ui.Header("Listing Feed Follows for each user")
 	for _, f := range follows {
-		Infof("- %s", f.FeedID)
+		s.ui.Item("%s", f.FeedID.String())
 	}
 
 	return nil
@@ -60,7 +66,8 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 	// fetch feed
 	_, err := fetchFeed(context.Background(), url)
 	if err != nil {
-		return Errorf("error fetching feed %v", err)
+		s.ui.Error(err.Error())
+		return err
 	}
 
 	// create a new feed in the db and return it
@@ -74,7 +81,8 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 	})
 
 	if err != nil {
-		return Errorf("error creating a new feed %v", err)
+		s.ui.Error(err.Error())
+		return err
 	}
 
 	// create a new follow
@@ -87,10 +95,11 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 	})
 
 	if err != nil {
-		return Errorf("error creating a new feed following: %v", err)
+		s.ui.Error(err.Error())
+		return err
 	}
 
-	Infof("Feed Name: %s feed url: %s feed following:%s created", retFeed.Name, retFeed.Url, follow.FeedID)
+	s.ui.Item("Feed Name: %s feed url: %s feed following:%s created", retFeed.Name, retFeed.Url, follow.FeedID)
 	return nil
 }
 
@@ -99,28 +108,30 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 func handlerGetFeeds(s *state, cmd command) error {
 	feeds, err := s.db.GetFeeds(context.Background())
 	if err != nil {
-		return Errorf("error running getting feeds %v", err)
+		s.ui.Error(err.Error())
+		return err
 	}
-
+	s.ui.Header("Feeds")
 	for _, f := range feeds {
-		Infof("%s - %s - %s", f.Name, f.Url, f.UserName)
+		s.ui.Column("%s\t%s\t%s\t\n", f.Name, f.Url, f.UserName)
 	}
 	return nil
 }
 
+// handlerUnfollow will unfollow a feed assigned to a user if that user is currently following the feed
 func handlerUnfollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 2 {
-		Errorf("unsupported arg count: %d", len(cmd.args))
+		return fmt.Errorf("unsupported error count %d", len(cmd.args))
 	}
 
 	url := cmd.args[0]
 	if !isValidURL(url) {
-		return Errorf("invalid url: %s", cmd.args[0])
+		return fmt.Errorf("invalid url: %s", cmd.args[0])
 	}
 
 	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
-		return Errorf("unable to get feed follows %v", err)
+		return fmt.Errorf("unable to get feed follows %v", err)
 	}
 
 	// loop through the feeds and find the feed id that matches the url
@@ -137,10 +148,10 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 		UserID: user.ID,
 		FeedID: feedIdToDelete,
 	}); err != nil {
-		return Errorf("error deleting feed follow for user %v", err)
+		return fmt.Errorf("error deleting feed follow for user %v", err)
 	}
-
-	Infof("successfully unfollowed feed: %s", url)
+	s.ui.Header("Unfollow Feed")
+	s.ui.Item("successfully unfollowed feed: %s", url)
 	return nil
 }
 
@@ -150,11 +161,11 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 func handlerGetFollows(s *state, cmd command, user database.User) error {
 	follows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
 	if err != nil {
-		return Errorf("unable to get feed follows for user %v", err)
+		return fmt.Errorf("unable to get feed follows for user %v", err)
 	}
-
+	s.ui.Header("Show Follows")
 	for _, f := range follows {
-		Infof("%s - %s", f.UserName, f.FeedName)
+		s.ui.Column("%s/t%s/t", f.UserName, f.FeedName)
 	}
 	return nil
 }
@@ -163,9 +174,10 @@ func handlerGetFollows(s *state, cmd command, user database.User) error {
 func handlerReset(s *state, cmd command) error {
 	err := s.db.DeleteAllUsers(context.Background())
 	if err != nil {
-		return Errorf("error reseting database %v", err)
+		return fmt.Errorf("error reseting database %v", err)
 	}
-	Successf("success reset database")
+	s.ui.Header("Reset Database")
+	s.ui.Info("success reset database")
 	return nil
 }
 
@@ -173,29 +185,29 @@ func handlerReset(s *state, cmd command) error {
 // follow record for the current user
 func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
-		return Errorf("should only have one argument in follow command but got %d", len(cmd.args))
+		return fmt.Errorf("should only have one argument in follow command but got %d", len(cmd.args))
 	}
 
 	url := cmd.args[0]
 	if url == "" {
-		return Errorf("The url is blank, pass in a properly formatted url")
+		return fmt.Errorf("The url is blank, pass in a properly formatted url")
 	}
 
 	if !isValidURL(url) {
-		return Errorf("The url is not a valid format, pass in a properly formatted url")
+		return fmt.Errorf("The url is not a valid format, pass in a properly formatted url")
 	}
 
 	user, err := s.db.GetUser(context.Background(), s.config.Current_User_Name)
 	if err != nil {
-		return Errorf("unable to get user from db %v", err)
+		return fmt.Errorf("unable to get user from db %v", err)
 	}
 
 	feed, err := s.db.GetFeedByUrl(context.Background(), url)
 	if err != nil {
-		return Errorf("unable to get feed by url %v", err)
+		return fmt.Errorf("unable to get feed by url %v", err)
 	}
-
-	Infof("found current user:%s and feed by url:%s", user.Name, feed.Name)
+	s.ui.Header("Create a Following for User")
+	s.ui.Item("Found current user:%s and feed by url:%s", user.Name, feed.Name)
 
 	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
 		ID:        uuid.New(),
@@ -205,7 +217,7 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 		FeedID:    feed.ID,
 	})
 
-	Successf("new feed following created: id:%s name:%s username:%s", follow.ID, follow.FeedName, follow.UserName)
+	s.ui.Item("New feed following created: id:%s name:%s username:%s", follow.ID, follow.FeedName, follow.UserName)
 	return nil
 }
 
@@ -213,15 +225,15 @@ func handlerFollow(s *state, cmd command, user database.User) error {
 func handlerListUsers(s *state, cmd command) error {
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
-		return Errorf("error listing users %s", err.Error())
+		return fmt.Errorf("error listing users %s", err.Error())
 	}
 
-	Infof("users:")
+	s.ui.Info("List Users")
 	for _, u := range users {
 		if u.Name == s.config.Current_User_Name {
-			Infof("%s (current logged in user)", u.Name)
+			s.ui.Item("%s (current logged in user)", u.Name)
 		} else {
-			Infof("%s", u.Name)
+			s.ui.Item("%s", u.Name)
 		}
 	}
 
@@ -242,13 +254,12 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 		Limit:  int32(limit),
 	})
 	if err != nil {
-		return Errorf("unable to get posts for user %s", user.Name)
+		return fmt.Errorf("unable to get posts for user %s", user.Name)
 	}
-
-	Infof("browsing the %d most recent posts", limit)
+	s.ui.Header("Browse Posts")
 
 	for _, p := range posts {
-		Infof("- %s %s %s", p.Title, p.Description.String, p.PublishedAt)
+		s.ui.Column("%s/t%s/t%s/t", p.Title, p.Description.String, p.PublishedAt)
 	}
 	return nil
 }
@@ -257,7 +268,7 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 // expects duration argument in time ex 1m
 func handlerAgg(s *state, cmd command) error {
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
-		return Errorf("The agg command should only have one duration argument, recieved %d arguments.", len(cmd.args))
+		return fmt.Errorf("The agg command should only have one duration argument, recieved %d arguments.", len(cmd.args))
 	}
 	timeArg := cmd.args[0]
 	duration, err := time.ParseDuration(timeArg)
@@ -265,7 +276,7 @@ func handlerAgg(s *state, cmd command) error {
 		return err
 	}
 
-	Infof("We will begin downloading posts from your feeds starting in %v", duration)
+	s.ui.Item("We will begin downloading posts from your feeds starting in %v", duration)
 	var wg sync.WaitGroup
 
 	ticker := time.NewTicker(duration)
@@ -288,7 +299,7 @@ func handlerAgg(s *state, cmd command) error {
 // Returns an error if any step fails.
 func handlerRegister(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
-		return Errorf("a username is required")
+		return fmt.Errorf("a username is required")
 	}
 
 	username := cmd.args[0]
@@ -302,18 +313,18 @@ func handlerRegister(s *state, cmd command) error {
 	})
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok && string(pgErr.Code) == "23505" {
-			s.renderer.Error(fmt.Sprintf("User %q already exists in database", username))
-			return Errorf("error user %q already exists", username)
+			s.ui.Error(fmt.Sprintf("User %q already exists in database", username))
+			return fmt.Errorf("error user %q already exists", username)
 		}
 		return err
 	}
 
 	err = s.config.SetUser(user.Name)
 	if err != nil {
-		return Errorf("error setting username %s", err.Error())
+		return fmt.Errorf("error setting username %s", err.Error())
 	}
 
-	Infof("the following user was created successfully id:%s name:%s", user.ID.String(), user.Name)
+	s.ui.Item("the following user was created successfully id:%s name:%s", user.ID.String(), user.Name)
 	return nil
 
 }
@@ -321,14 +332,14 @@ func handlerRegister(s *state, cmd command) error {
 // will login the passed in user
 func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) == 0 {
-		return Errorf("a username is required")
+		return fmt.Errorf("a username is required")
 	}
 	username := cmd.args[0]
 
 	// find user in db
 	userInDb, err := s.db.GetUser(context.Background(), username)
 	if err != nil {
-		return Errorf("unable to find user in database %s", username)
+		return fmt.Errorf("unable to find user in database %s", username)
 	}
 
 	err = s.config.SetUser(userInDb.Name)

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,34 +17,12 @@ import (
 type message int
 
 const (
-	prefix = "🐊 Gator - RSS Aggregator Command Line Interface"
+	prefix = "\n🐊 Gator - RSS Aggregator Command Line Interface"
 	Reset  = "\033[0m"
 	Red    = "\033[31m"
 	Green  = "\033[32m]"
 	Blue   = "\033[34m"
 )
-
-func Successf(format string, args ...any) {
-	fmt.Fprintf(os.Stdout, "Success %s\n", fmt.Sprintf(format, args...))
-}
-
-func Infof(format string, args ...any) {
-	fmt.Fprintf(os.Stdout, "%4s%s\n", "", fmt.Sprintf(format, args...))
-}
-
-func Warnf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "Warn %s\n", fmt.Sprintf(format, args...))
-}
-
-func Errorf(format string, args ...any) error {
-	fmt.Fprintf(os.Stdout, "Error: %s\n", fmt.Sprintf(format, args...))
-	return fmt.Errorf(format, args...)
-}
-
-func (s *state) TableW(format string, args ...any) {
-	fmt.Fprintf(s.tw, format, args...)
-	s.tw.Flush()
-}
 
 func scrapeFeeds(s *state) error {
 	// fetch the latest feed
@@ -57,15 +34,15 @@ func scrapeFeeds(s *state) error {
 	// mark the feed as fetched
 	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
 	if err != nil {
-		return Errorf("error marking fetch feed with id:%s error: %s", feed.ID.String(), err)
+		return fmt.Errorf("error marking fetch feed with id:%s error: %s", feed.ID.String(), err)
 	}
 
 	rss, err := fetchFeed(context.Background(), feed.Url)
 	if err != nil {
-		return Errorf("unable to fetch feed with the following url:%s error:%s", feed.Url, err)
+		return fmt.Errorf("unable to fetch feed with the following url:%s error:%s", feed.Url, err)
 	}
 
-	Infof("%s\n", rss.Channel.Title)
+	s.ui.Item("%s\n", rss.Channel.Title)
 	for _, r := range rss.Channel.Item {
 
 		// attempt to parse the time, if not set it to now
@@ -86,9 +63,9 @@ func scrapeFeeds(s *state) error {
 		})
 
 		if err != nil {
-			return Errorf("error creating post %v", err)
+			return fmt.Errorf("error creating post %v", err)
 		}
-		Successf("added entry to db: %s @ %v\n", r.Title, r.PubDate)
+		s.ui.Item("added entry to db: %s @ %v\n", r.Title, r.PubDate)
 	}
 	return nil
 }
