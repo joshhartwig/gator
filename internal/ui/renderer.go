@@ -28,7 +28,7 @@ func (r *Renderer) Item(format string, args ...any) {
 }
 
 func (r *Renderer) Column(format string, args ...any) {
-	tw := tabwriter.NewWriter(r.out, 2, 4, 4, ' ', tabwriter.TabIndent)
+	tw := tabwriter.NewWriter(r.out, 2, 2, 2, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(tw, format, args...)
 	tw.Flush()
 }

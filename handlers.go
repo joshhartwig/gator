@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -12,6 +13,12 @@ import (
 	"github.com/joshhartwig/gator/internal/ui"
 	"github.com/lib/pq"
 )
+
+// quit the app
+func (c *commands) handlerQuit(s *state, cmd command) error {
+	os.Exit(1)
+	return nil
+}
 
 // handlerHelp prints a list of all available command names to the standard output.
 // It iterates over the command names stored in the commands struct and outputs each one.
@@ -32,7 +39,7 @@ func (c *commands) handlerHelp(s *state, cmd command) error {
 	return nil
 }
 
-// handlerListFollows retrieves the list of feed follows from the database and outputs them using spew.Dump.
+// handlerListFollows retrieves the list of feed follows from the database and outputs
 // It returns an error if the database operation fails.
 func handlerListFollows(s *state, cmd command) error {
 	follows, err := s.db.GetFeedFollows(context.Background())
@@ -43,7 +50,7 @@ func handlerListFollows(s *state, cmd command) error {
 
 	s.ui.Header("Listing Feed Follows for each user")
 	for _, f := range follows {
-		s.ui.Item("%s", f.FeedID.String())
+		s.ui.Column("%s\t%s\t%s\t%s\n", f.FeedID, f.UserID, f.UserName, f.FeedName)
 	}
 
 	return nil
@@ -55,6 +62,7 @@ func handlerListFollows(s *state, cmd command) error {
 // and creates a new feed entry associated with the user. If successful, it prints the feed details.
 // Returns an error if argument validation fails, feed fetching fails, user retrieval fails, or feed creation fails.
 func handlerAddFeed(s *state, cmd command, user database.User) error {
+	s.ui.Header("Add Feed")
 
 	if len(cmd.args) < 2 || len(cmd.args) > 3 {
 		return fmt.Errorf(`addfeed should have two or more commands (ex addfeed "hackernews" "http://url")`)
@@ -99,7 +107,7 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
 		return err
 	}
 
-	s.ui.Item("Feed Name: %s feed url: %s feed following:%s created", retFeed.Name, retFeed.Url, follow.FeedID)
+	s.ui.Item("Feed Name: %s feed url: %s feed following: %s created", retFeed.Name, retFeed.Url, follow.FeedID)
 	return nil
 }
 
@@ -125,6 +133,8 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	}
 
 	url := cmd.args[0]
+
+	s.ui.Header("Unfollow Feed")
 	if !isValidURL(url) {
 		return fmt.Errorf("invalid url: %s", cmd.args[0])
 	}
@@ -150,8 +160,8 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	}); err != nil {
 		return fmt.Errorf("error deleting feed follow for user %v", err)
 	}
-	s.ui.Header("Unfollow Feed")
-	s.ui.Item("successfully unfollowed feed: %s", url)
+
+	s.ui.Item("Successfully unfollowed feed: %s", url)
 	return nil
 }
 
@@ -165,7 +175,7 @@ func handlerGetFollows(s *state, cmd command, user database.User) error {
 	}
 	s.ui.Header("Show Follows")
 	for _, f := range follows {
-		s.ui.Column("%s/t%s/t", f.UserName, f.FeedName)
+		s.ui.Column("%s\t%s\t\n", f.UserName, f.FeedName)
 	}
 	return nil
 }
@@ -177,7 +187,7 @@ func handlerReset(s *state, cmd command) error {
 		return fmt.Errorf("error reseting database %v", err)
 	}
 	s.ui.Header("Reset Database")
-	s.ui.Info("success reset database")
+	s.ui.Info("Reset database complete")
 	return nil
 }
 
@@ -228,7 +238,7 @@ func handlerListUsers(s *state, cmd command) error {
 		return fmt.Errorf("error listing users %s", err.Error())
 	}
 
-	s.ui.Info("List Users")
+	s.ui.Header("List Users")
 	for _, u := range users {
 		if u.Name == s.config.Current_User_Name {
 			s.ui.Item("%s (current logged in user)", u.Name)
@@ -259,7 +269,7 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 	s.ui.Header("Browse Posts")
 
 	for _, p := range posts {
-		s.ui.Column("%s/t%s/t%s/t", p.Title, p.Description.String, p.PublishedAt)
+		s.ui.Column("%s\t%s\t%s\t\n", p.Title, p.Description.String, p.PublishedAt)
 	}
 	return nil
 }
@@ -267,6 +277,7 @@ func handlerBrowsePosts(s *state, cmd command, user database.User) error {
 // handleAgg will aggregate all posts from the feeds and write them to the database
 // expects duration argument in time ex 1m
 func handlerAgg(s *state, cmd command) error {
+	s.ui.Header("Aggregate Feeds")
 	if len(cmd.args) < 1 || len(cmd.args) > 1 {
 		return fmt.Errorf("The agg command should only have one duration argument, recieved %d arguments.", len(cmd.args))
 	}
@@ -277,8 +288,8 @@ func handlerAgg(s *state, cmd command) error {
 	}
 
 	s.ui.Item("We will begin downloading posts from your feeds starting in %v", duration)
-	var wg sync.WaitGroup
 
+	var wg sync.WaitGroup
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
@@ -303,6 +314,7 @@ func handlerRegister(s *state, cmd command) error {
 	}
 
 	username := cmd.args[0]
+	s.ui.Header("Register")
 
 	// search for user first prior to creating new user
 	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{
@@ -324,7 +336,7 @@ func handlerRegister(s *state, cmd command) error {
 		return fmt.Errorf("error setting username %s", err.Error())
 	}
 
-	s.ui.Item("the following user was created successfully id:%s name:%s", user.ID.String(), user.Name)
+	s.ui.Item("The following user was created successfully id:%s name:%s", user.ID.String(), user.Name)
 	return nil
 
 }
@@ -336,6 +348,7 @@ func handlerLogin(s *state, cmd command) error {
 	}
 	username := cmd.args[0]
 
+	s.ui.Header("Login")
 	// find user in db
 	userInDb, err := s.db.GetUser(context.Background(), username)
 	if err != nil {
@@ -346,7 +359,6 @@ func handlerLogin(s *state, cmd command) error {
 	if err != nil {
 		return err
 	}
-	print(message(1), fmt.Sprintf("successfully unfollowed feed: %s", username))
-	fmt.Printf("gator: the username:%s has been set", username)
+	s.ui.Item("Username has been set")
 	return nil
 }

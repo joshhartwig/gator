@@ -42,7 +42,13 @@ func scrapeFeeds(s *state) error {
 		return fmt.Errorf("unable to fetch feed with the following url:%s error:%s", feed.Url, err)
 	}
 
-	s.ui.Item("%s\n", rss.Channel.Title)
+	if len(rss.Channel.Item) == 0 {
+		s.ui.Item("No new posts for: %s", rss.Channel.Title)
+		return nil
+	}
+
+	// loop through each item in the channel
+	s.ui.Item("%s", rss.Channel.Title)
 	for _, r := range rss.Channel.Item {
 
 		// attempt to parse the time, if not set it to now
@@ -65,7 +71,13 @@ func scrapeFeeds(s *state) error {
 		if err != nil {
 			return fmt.Errorf("error creating post %v", err)
 		}
-		s.ui.Item("added entry to db: %s @ %v\n", r.Title, r.PubDate)
+
+		t, err := time.Parse(time.DateTime, r.PubDate)
+		if err != nil {
+			s.ui.Column("  + %s\t%s\t\n", r.Title, time.DateTime)
+		} else {
+			s.ui.Column("  + %s\t%s\t\n", r.Title, t)
+		}
 	}
 	return nil
 }

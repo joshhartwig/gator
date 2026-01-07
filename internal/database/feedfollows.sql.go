@@ -88,25 +88,41 @@ SELECT
   feed_follows.created_at,
   feed_follows.updated_at,
   feed_follows.user_id,
-  feed_follows.feed_id
+  feed_follows.feed_id,
+  users.name as user_name,
+  feeds.name as feed_name
 FROM feed_follows
+INNER JOIN users ON users.id = feed_follows.user_id
+INNER JOIN feeds ON feeds.id = feed_follows.feed_id
 `
 
-func (q *Queries) GetFeedFollows(ctx context.Context) ([]FeedFollow, error) {
+type GetFeedFollowsRow struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UserID    uuid.UUID
+	FeedID    uuid.UUID
+	UserName  string
+	FeedName  string
+}
+
+func (q *Queries) GetFeedFollows(ctx context.Context) ([]GetFeedFollowsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getFeedFollows)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []FeedFollow
+	var items []GetFeedFollowsRow
 	for rows.Next() {
-		var i FeedFollow
+		var i GetFeedFollowsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserID,
 			&i.FeedID,
+			&i.UserName,
+			&i.FeedName,
 		); err != nil {
 			return nil, err
 		}
