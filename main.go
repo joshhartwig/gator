@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"database/sql"
 	"fmt"
 	"log"
@@ -114,13 +113,6 @@ func main() {
 	if len(args) < 2 {
 		st.ui.Error("Gator requires two or more arguments initially, see 'help' for more assistance")
 		os.Exit(1)
-	}
-	opts := []string{}
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		fmt.Println("Enter a command to get started")
-		scan := scanner.Text()
-		opts = append(opts, scan)
 	}
 
 	action := args[1]

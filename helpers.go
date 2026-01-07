@@ -14,8 +14,6 @@ import (
 	"github.com/joshhartwig/gator/internal/database"
 )
 
-type message int
-
 const (
 	prefix = "\n🐊 Gator - RSS Aggregator Command Line Interface"
 	Reset  = "\033[0m"
@@ -31,15 +29,15 @@ func scrapeFeeds(s *state) error {
 		return errors.ErrUnsupported
 	}
 
+	rss, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return fmt.Errorf("unable to fetch feed with the following url:%s error:%s", feed.Url, err)
+	}
+
 	// mark the feed as fetched
 	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
 	if err != nil {
 		return fmt.Errorf("error marking fetch feed with id:%s error: %s", feed.ID.String(), err)
-	}
-
-	rss, err := fetchFeed(context.Background(), feed.Url)
-	if err != nil {
-		return fmt.Errorf("unable to fetch feed with the following url:%s error:%s", feed.Url, err)
 	}
 
 	if len(rss.Channel.Item) == 0 {
@@ -52,7 +50,7 @@ func scrapeFeeds(s *state) error {
 	for _, r := range rss.Channel.Item {
 
 		// attempt to parse the time, if not set it to now
-		pubDate, err := time.Parse("time.RFC3339", r.PubDate)
+		pubDate, err := time.Parse(time.RFC3339, r.PubDate)
 		if err != nil {
 			pubDate = time.Now()
 		}
@@ -63,7 +61,7 @@ func scrapeFeeds(s *state) error {
 			UpdatedAt:   time.Now(),
 			Title:       r.Title,
 			Url:         r.Link,
-			Description: sql.NullString{String: r.Description},
+			Description: sql.NullString{String: r.Description, Valid: true},
 			PublishedAt: pubDate,
 			FeedID:      feed.ID,
 		})
@@ -100,6 +98,8 @@ func fetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
 	if err != nil {
 		return &feed, err
 	}
+
+	defer res.Body.Close()
 
 	data, err := io.ReadAll(res.Body)
 	if err != nil {

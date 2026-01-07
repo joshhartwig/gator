@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -289,18 +288,25 @@ func handlerAgg(s *state, cmd command) error {
 
 	s.ui.Item("We will begin downloading posts from your feeds starting in %v", duration)
 
-	var wg sync.WaitGroup
+	const maxWorkers = 4
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		wg.Add(1)
+	jobs := make(chan struct{}, maxWorkers)
+
+	for i := 0; i < maxWorkers; i++ {
 		go func() {
-			defer wg.Done()
-			scrapeFeeds(s)
+			for range jobs {
+				if err := scrapeFeeds(s); err != nil {
+					s.ui.Error(err.Error())
+				}
+			}
 		}()
 	}
-	wg.Wait()
+
+	for range ticker.C {
+		jobs <- struct{}{}
+	}
 	return nil
 }
 
