@@ -28,7 +28,7 @@ go run ./...
 
 ### Installation
 
-Setup the database by downloading the Docker Compose file and creating a new Postgres database.
+Setup the database by downloading the Docker Compose file and creating a new Postgres database. Run the executable.
 
 ### Usage
 
@@ -51,7 +51,7 @@ gator browse # shows the most recent posts for the logged in user
 
 ## Contributing
 
-Contributions are welcome! Please open issues or submit pull requests.
+Open issues or submit pull requests.
 
 ## License
 
