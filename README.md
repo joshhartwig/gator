@@ -1,4 +1,4 @@
-<img src="gator.png" width="50" />
+<img src="gator.png" width="200" />
 
 # Gator
 
