@@ -1,3 +1,5 @@
+![Gator Logo](gator.png)
+
 # Gator
 
 Gator command line RSS reader / Blog aggregator that is part of the Boot.dev course. The application allows you to follow as many RSS feeds as you want and simply allow the app to aggregate the feeds non stop. If you let it run, it will keep downloading and updating to the latests feeds. Additionally it allows for multiple users, and allows for you to follow other users feeds.
