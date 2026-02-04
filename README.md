@@ -1,4 +1,4 @@
-![Gator Logo](gator.png)
+<img src="gator.png" width="50" />
 
 # Gator
 
